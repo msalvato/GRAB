@@ -15,6 +15,7 @@
 
 import os
 import glob
+import pathlib
 import numpy as np
 import torch
 from torch.utils import data
@@ -35,8 +36,8 @@ class LoadData(data.Dataset):
 
         frame_names = np.load(os.path.join(dataset_dir,ds_name, 'frame_names.npz'))['frame_names']
         self.frame_names = [os.path.join(dataset_dir, fname) for fname in frame_names]
-        self.frame_sbjs = np.asarray([name.split('/')[-3] for name in self.frame_names])
-        self.frame_objs = np.asarray([name.split('/')[-2].split('_')[0] for name in self.frame_names])
+        self.frame_sbjs = np.asarray([pathlib.PurePath(name).parts[-3] for name in self.frame_names])
+        self.frame_objs = np.asarray([pathlib.PurePath(name).parts[-2].split('_')[0] for name in self.frame_names])
 
         self.sbjs = np.unique(self.frame_sbjs)
         self.obj_info = np.load(os.path.join(dataset_dir, 'obj_info.npy'), allow_pickle=True).item()
