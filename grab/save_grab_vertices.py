@@ -19,6 +19,7 @@ import torch
 import shutil
 import os, sys, glob
 import smplx
+import smplx.joint_names
 import argparse
 
 from tqdm import tqdm
@@ -29,6 +30,7 @@ from tools.meshviewer import Mesh
 from tools.utils import parse_npz
 from tools.utils import params2torch
 from tools.utils import to_cpu
+import tools.consts
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -94,6 +96,29 @@ def save_grab_vertices(cfg, logger=None, **params):
             verts_sbj = to_cpu(output_sbj.vertices)
             joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
             np.savez_compressed(outfname, verts_body=verts_sbj)
+        
+        if cfg.save_hand_joints:
+            sbj_mesh = os.path.join(grab_path, '..', seq_data.body.vtemp)
+            sbj_vtemp = np.array(Mesh(filename=sbj_mesh).vertices)
+
+            sbj_m = smplx.create( model_path=cfg.model_path,
+                                  model_type='smplx',
+                                  gender=gender,
+                                  num_pca_comps=n_comps,
+                                  v_template = sbj_vtemp,
+                                  batch_size=T)
+
+            sbj_parms = params2torch(seq_data.body.params)
+            output_sbj = sbj_m(**sbj_parms)
+            verts_sbj = to_cpu(output_sbj.vertices)
+            joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
+            joint_names = smplx.joint_names.JOINT_NAMES
+            rhand_joints = joints_sbj[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :]
+            lhand_joints = joints_sbj[:, [joint_names.index(name) for name in tools.consts.LHAND_JOINT_NAMES], :]
+            smplx_vertex_ids = smplx.vertex_ids.vertex_ids['smplx']
+            rhand_tips = verts_sbj[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:]
+            lhand_tips = verts_sbj[:,[smplx_vertex_ids[name] for name in tools.consts.LHAND_VERTEX_TIPS],:]
+            np.savez_compressed(outfname, verts_body=verts_sbj, joints_body=joints_sbj)
 
         if cfg.save_lhand_verts:
             lh_mesh = os.path.join(grab_path, '..', seq_data.lhand.vtemp)
