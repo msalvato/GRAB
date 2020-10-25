@@ -215,6 +215,7 @@ if __name__ == '__main__':
             'save_object_verts': True,
             'save_lhand_verts': False,
             'save_rhand_verts': False,
+            'save_hand_joints': False,
 
             # number of vertices samples for each object
             'n_verts_sample': 1024,
@@ -232,8 +233,8 @@ if __name__ == '__main__':
     logger(msg)
 
     cwd = os.getcwd()
-    default_cfg_path = os.path.join(cwd, '../configs/get_vertices_cfg.yaml')
-    cfg = Config(default_cfg_path=default_cfg_path, **cfg)
+    default_cfg_path = os.path.join(cwd, './configs/get_vertices_cfg.yaml')
+    cfg = Config(default_cfg_path=default_cfg_path)
     cfg.write_cfg(write_path=cfg.out_path + '/get_vertices_cfg.yaml')
 
     save_grab_vertices(cfg, logger)
