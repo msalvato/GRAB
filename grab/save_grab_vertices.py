@@ -69,7 +69,7 @@ def save_grab_vertices(cfg, logger=None, **params):
         action_name = os.path.basename(sequence)
         if os.path.exists(outfname):
             logger('Results for %s split already exist.' % (action_name))
-            continue
+            #continue
         else:
             logger('Processing data for %s split.' % (action_name))
 
@@ -109,15 +109,27 @@ def save_grab_vertices(cfg, logger=None, **params):
                                   batch_size=T)
 
             sbj_parms = params2torch(seq_data.body.params)
+            lhand_parms = params2torch(seq_data.lhand.params)
+            rhand_parms = params2torch(seq_data.rhand.params)
             output_sbj = sbj_m(**sbj_parms)
             verts_sbj = to_cpu(output_sbj.vertices)
             joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
             joint_names = smplx.joint_names.JOINT_NAMES
-            rhand_joints = joints_sbj[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :]
-            lhand_joints = joints_sbj[:, [joint_names.index(name) for name in tools.consts.LHAND_JOINT_NAMES], :]
+            rhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :]
+            lhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.LHAND_JOINT_NAMES], :]
             smplx_vertex_ids = smplx.vertex_ids.vertex_ids['smplx']
-            rhand_tips = verts_sbj[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:]
-            lhand_tips = verts_sbj[:,[smplx_vertex_ids[name] for name in tools.consts.LHAND_VERTEX_TIPS],:]
+            rhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:]
+            lhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.LHAND_VERTEX_TIPS],:]
+            lhand_all = torch.cat((lhand_joints, lhand_tips), axis=1)
+            rhand_all = torch.cat((rhand_joints, rhand_tips), axis=1)
+            lhand_transl = lhand_parms['transl']
+            rhand_transl = rhand_parms['transl']
+            lhand_orient = -lhand_parms['global_orient']
+            rhand_orient = -rhand_parms['global_orient']
+            lhand_rot_mats = smplx.lbs.batch_rodrigues(lhand_orient.view(-1, 3)).view([np.shape(lhand_all)[0], 3, 3])
+            lhand_zeroed = torch.matmul(lhand_all - lhand_transl.unsqueeze(dim=1), lhand_rot_mats)
+            
+
             np.savez_compressed(outfname, verts_body=verts_sbj, joints_body=joints_sbj)
 
         if cfg.save_lhand_verts:
@@ -135,7 +147,7 @@ def save_grab_vertices(cfg, logger=None, **params):
             lh_parms = params2torch(seq_data.lhand.params)
             lh_output = lh_m(**lh_parms)
             verts_lh = to_cpu(lh_output.vertices)
-            joints_lh = to_cpu(lh_output.joints) # to get the hand joints
+            joints_lh = to_cpu(lh_output.joints) # to get the hand joints          
             np.savez_compressed(outfname.replace('_verts_body.npz', '_verts_lhand.npz'), verts_body=verts_lh)
 
         if cfg.save_rhand_verts:
