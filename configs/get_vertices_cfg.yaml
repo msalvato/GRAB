@@ -2,8 +2,9 @@ grab_path: D:\hands\grab\grab_dataset\grab
 model_path: D:\hands\grab\models_smplx_v1_1\models
 n_verts_sample: 1024
 out_path: D:\hands\grab\grab_dataset\grab_vertices
-save_body_verts: false
+save_body_verts: true
 save_hand_joints: true
-save_lhand_verts: true
+save_lhand_verts: false
 save_object_verts: true
 save_rhand_verts: false
+save_contact: true

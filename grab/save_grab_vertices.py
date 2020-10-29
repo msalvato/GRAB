@@ -21,6 +21,7 @@ import os, sys, glob
 import smplx
 import smplx.joint_names
 import argparse
+import gc
 
 from tqdm import tqdm
 from tools.objectmodel import ObjectModel
@@ -64,12 +65,15 @@ def save_grab_vertices(cfg, logger=None, **params):
 
     for sequence in tqdm(all_seqs):
 
+        gc.collect()
+
         outfname = makepath(sequence.replace(grab_path,out_path).replace('.npz', '_verts_body.npz'), isfile=True)
 
         action_name = os.path.basename(sequence)
-        if os.path.exists(outfname):
+        #remove this
+        if os.path.exists(outfname.replace('_verts_body.npz', '_verts_object.npz')):
             logger('Results for %s split already exist.' % (action_name))
-            #continue
+            continue
         else:
             logger('Processing data for %s split.' % (action_name))
 
@@ -92,45 +96,59 @@ def save_grab_vertices(cfg, logger=None, **params):
                                   batch_size=T)
 
             sbj_parms = params2torch(seq_data.body.params)
-            output_sbj = sbj_m(**sbj_parms)
+            output_sbj = sbj_m(**sbj_parms, no_grad=True)
             verts_sbj = to_cpu(output_sbj.vertices)
             joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
             np.savez_compressed(outfname, verts_body=verts_sbj)
         
         if cfg.save_hand_joints:
-            sbj_mesh = os.path.join(grab_path, '..', seq_data.body.vtemp)
-            sbj_vtemp = np.array(Mesh(filename=sbj_mesh).vertices)
+            if not cfg.save_body_verts:
+                sbj_mesh = os.path.join(grab_path, '..', seq_data.body.vtemp)
+                sbj_vtemp = np.array(Mesh(filename=sbj_mesh).vertices)
 
-            sbj_m = smplx.create( model_path=cfg.model_path,
-                                  model_type='smplx',
-                                  gender=gender,
-                                  num_pca_comps=n_comps,
-                                  v_template = sbj_vtemp,
-                                  batch_size=T)
+                sbj_m = smplx.create( model_path=cfg.model_path,
+                                    model_type='smplx',
+                                    gender=gender,
+                                    num_pca_comps=n_comps,
+                                    v_template = sbj_vtemp,
+                                    batch_size=T)
 
-            sbj_parms = params2torch(seq_data.body.params)
+                sbj_parms = params2torch(seq_data.body.params)
+                output_sbj = sbj_m(**sbj_parms)
+                verts_sbj = to_cpu(output_sbj.vertices)
+                joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
+                
             lhand_parms = params2torch(seq_data.lhand.params)
             rhand_parms = params2torch(seq_data.rhand.params)
-            output_sbj = sbj_m(**sbj_parms)
-            verts_sbj = to_cpu(output_sbj.vertices)
-            joints_sbj = to_cpu(output_sbj.joints) # to get the body joints (it includes some additional landmarks, check smplx repo.
             joint_names = smplx.joint_names.JOINT_NAMES
-            rhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :]
-            lhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.LHAND_JOINT_NAMES], :]
+            rhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :].detach().numpy()
+            lhand_joints = output_sbj.joints[:, [joint_names.index(name) for name in tools.consts.LHAND_JOINT_NAMES], :].detach().numpy()
             smplx_vertex_ids = smplx.vertex_ids.vertex_ids['smplx']
-            rhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:]
-            lhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.LHAND_VERTEX_TIPS],:]
-            lhand_all = torch.cat((lhand_joints, lhand_tips), axis=1)
-            rhand_all = torch.cat((rhand_joints, rhand_tips), axis=1)
-            lhand_transl = lhand_parms['transl']
-            rhand_transl = rhand_parms['transl']
+            rhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:].detach().numpy()
+            lhand_tips = output_sbj.vertices[:,[smplx_vertex_ids[name] for name in tools.consts.LHAND_VERTEX_TIPS],:].detach().numpy()
+            #lhand_all = torch.cat((lhand_joints, lhand_tips), axis=1)
+            #rhand_all = torch.cat((rhand_joints, rhand_tips), axis=1)
+            lhand_transl = lhand_parms['transl'].detach().numpy()
+            rhand_transl = rhand_parms['transl'].detach().numpy()
+            
             lhand_orient = -lhand_parms['global_orient']
             rhand_orient = -rhand_parms['global_orient']
-            lhand_rot_mats = smplx.lbs.batch_rodrigues(lhand_orient.view(-1, 3)).view([np.shape(lhand_all)[0], 3, 3])
-            lhand_zeroed = torch.matmul(lhand_all - lhand_transl.unsqueeze(dim=1), lhand_rot_mats)
+            lhand_rot_mats = to_cpu(smplx.lbs.batch_rodrigues(lhand_orient.view(-1, 3)).view([np.shape(lhand_joints)[0], 3, 3]))
+            rhand_rot_mats = to_cpu(smplx.lbs.batch_rodrigues(lhand_orient.view(-1, 3)).view([np.shape(rhand_joints)[0], 3, 3]))
             
-
-            np.savez_compressed(outfname, verts_body=verts_sbj, joints_body=joints_sbj)
+                      
+            np.savez_compressed(outfname.replace('_verts_body.npz', '_hand_joints.npz'), lhand_tips=lhand_tips, rhand_tips = rhand_tips, 
+                                lhand_joints=lhand_joints, rhand_joints=rhand_joints,
+                                lhand_trans = lhand_transl, rhand_trans=rhand_transl, 
+                                lhand_rot = lhand_rot_mats, rhand_rot = rhand_rot_mats)
+        
+        if cfg.save_contact:
+            #object vertices, so need that
+            object_contact = seq_data['contact']['object']
+            body_contact = seq_data['contact']['body']
+            frame_mask = (seq_data['contact']['object']>0).any(axis=1)
+            np.savez_compressed(outfname.replace('_verts_body.npz', '_contact_info.npz'), object_contact_mask = frame_mask,
+                                object_contact = object_contact, body_contact = body_contact)
 
         if cfg.save_lhand_verts:
             lh_mesh = os.path.join(grab_path, '..', seq_data.lhand.vtemp)
