@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import os, glob
 import smplx
+import smplx.joint_names
 import argparse
 from tqdm import tqdm
 
@@ -29,6 +30,8 @@ from tools.utils import params2torch
 from tools.utils import to_cpu
 from tools.utils import euler
 from tools.cfg_parser import Config
+
+import tools.consts
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -72,6 +75,28 @@ def vis_sequence(cfg,sequence, mv):
 
         sbj_parms = params2torch(seq_data.body.params)
         verts_sbj = to_cpu(sbj_m(**sbj_parms).vertices)
+        joints_sbj = to_cpu(sbj_m(**sbj_parms).joints) 
+        joint_names = smplx.joint_names.JOINT_NAMES
+        smplx_vertex_ids = smplx.vertex_ids.vertex_ids['smplx']
+        rhand_joints = joints_sbj[:, [joint_names.index(name) for name in tools.consts.RHAND_JOINT_NAMES], :]
+        rhand_tips = verts_sbj[:,[smplx_vertex_ids[name] for name in tools.consts.RHAND_VERTEX_TIPS],:]
+        joints_rh = np.concatenate((rhand_joints,rhand_tips),axis=1)
+
+        rh_mesh = os.path.join(grab_path, '..', seq_data.rhand.vtemp)
+        rh_vtemp = np.array(Mesh(filename=rh_mesh).vertices)
+
+        rh_m = smplx.create(model_path=cfg.model_path,
+                            model_type='mano',
+                            is_rhand = True,
+                            v_template = rh_vtemp,
+                            num_pca_comps=n_comps,
+                            flat_hand_mean=True,
+                            batch_size=T)
+
+        rh_parms = params2torch(seq_data.rhand.params)
+        rh_output = rh_m(**rh_parms)
+        verts_rh = to_cpu(rh_output.vertices)
+        #joints_rh = to_cpu(rh_output.joints)
 
 
         obj_mesh = os.path.join(grab_path, '..', seq_data.object.object_mesh)
@@ -92,15 +117,26 @@ def vis_sequence(cfg,sequence, mv):
 
         skip_frame = 4
         for frame in range(0,T, skip_frame):
+            out_meshes = []
             o_mesh = Mesh(vertices=verts_obj[frame], faces=obj_mesh.faces, vc=colors['yellow'])
             o_mesh.set_vertex_colors(vc=colors['red'], vertex_ids=seq_data['contact']['object'][frame] > 0)
-
-            s_mesh = Mesh(vertices=verts_sbj[frame], faces=sbj_m.faces, vc=colors['pink'], smooth=True)
-            s_mesh.set_vertex_colors(vc=colors['red'], vertex_ids=seq_data['contact']['body'][frame] > 0)
+            out_meshes.append(o_mesh)
 
             t_mesh = Mesh(vertices=verts_table[frame], faces=table_mesh.faces, vc=colors['white'])
+            out_meshes.append(t_mesh)
+            
+            if cfg.rhand_only:
+                s_mesh = Mesh(vertices=verts_rh[frame], faces=rh_m.faces, vc=[.3,.3,.6], smooth=False, wireframe=True)
+                #s_mesh.set_vertex_colors(vc=colors['red'], vertex_ids=seq_data['contact']['body'][frame] > 0)
+                s_joints = points2sphere(joints_rh[frame], radius=.004, vc=[0,1,0])
+                out_meshes.append(s_mesh)
+                out_meshes.append(s_joints)
+            else:
+                s_mesh = Mesh(vertices=verts_sbj[frame], faces=sbj_m.faces, vc=[.3,.3,.6], smooth=True)
+                s_mesh.set_vertex_colors(vc=colors['red'], vertex_ids=seq_data['contact']['body'][frame] > 0)
+                out_meshes.append(s_mesh)
 
-            mv.set_static_meshes([o_mesh, s_mesh, t_mesh])
+            mv.set_static_meshes(out_meshes)
 
 
 if __name__ == '__main__':
@@ -114,10 +150,14 @@ if __name__ == '__main__':
     parser.add_argument('--model-path', required=True, type=str,
                         help='The path to the folder containing smplx models')
 
+    parser.add_argument('--rhand-only', required=False, type=bool, default=False,
+                        help='If you only want to viz rhand')
+
     args = parser.parse_args()
 
     grab_path = args.grab_path
     model_path = args.model_path
+    rhand_only = args.rhand_only
 
     # grab_path = 'PATH_TO_DOWNLOADED_GRAB_DATA/grab'
     # model_path = 'PATH_TO_DOWNLOADED_MODELS_FROM_SMPLX_WEBSITE/'
@@ -125,6 +165,7 @@ if __name__ == '__main__':
     cfg = {
         'grab_path': grab_path,
         'model_path': model_path,
+        'rhand_only': rhand_only
     }
 
     cfg = Config(**cfg)
