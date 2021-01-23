@@ -74,6 +74,7 @@ if __name__ == '__main__':
         'only_contact': True,
         'save_body_verts': False,
         'save_object_verts': False,
+        'save_hand_joints': False,
         'save_contact': False,
     }
 
