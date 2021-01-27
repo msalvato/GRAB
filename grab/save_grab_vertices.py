@@ -92,14 +92,14 @@ def save_grab_vertices(cfg, logger=None, **params):
                 logger('Results for %s already exist.' % (cur_outname))
             
             else:
-                obj_name = np.array([seq_data.obj_name]*T)
-                sbj_id   = np.array([seq_data.sbj_id]*T)
-                n_comps  = np.array([seq_data.n_comps]*T)
-                gender   = np.array([seq_data.gender]*T)
-                intent = np.array([seq_data.motion_intent]*T)
-                frame_nums = np.arange(T)
-                np.savez_compressed(cur_outname, obj_name=obj_name, sbj_id=sbj_id, n_comps=n_comps, 
-                                    gender=gender, intent=intent, frame_nums=frame_nums)
+                obj_name_out = np.array([seq_data.obj_name]*T)
+                sbj_id_out   = np.array([seq_data.sbj_id]*T)
+                n_comps_out  = np.array([seq_data.n_comps]*T)
+                gender_out   = np.array([seq_data.gender]*T)
+                intent_out = np.array([seq_data.motion_intent]*T)
+                frame_nums_out = np.arange(T)
+                np.savez_compressed(cur_outname, obj_name=obj_name_out, sbj_id=sbj_id_out, n_comps=n_comps_out, 
+                                    gender=gender_out, intent=intent_out, frame_nums=frame_nums_out)
 
 
         if cfg.save_body_verts:
